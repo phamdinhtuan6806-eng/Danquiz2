@@ -1,16 +1,19 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useStore } from './store/useStore';
-import { Brain, LayoutDashboard, Settings, FileDown, BookOpen, Trophy } from 'lucide-react';
+import { Brain, LayoutDashboard, Settings, FileDown, BookOpen, Trophy, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Session } from '@supabase/supabase-js';
+import { supabase } from './lib/supabase';
 
 import { ImportQuestions } from './pages/ImportQuestions';
 import { QuizEngine } from './pages/QuizEngine';
 import { Dashboard } from './pages/Dashboard';
 import { SettingsPage } from './pages/SettingsPage';
 import { MockExam } from './pages/MockExam';
+import { AuthPage } from './pages/AuthPage';
 
-function Sidebar() {
+function Sidebar({ session }: { session: Session | null }) {
   const location = useLocation();
   const links = [
     { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
@@ -50,12 +53,17 @@ function Sidebar() {
         })}
       </nav>
       
-      <div className="p-4 m-4 glass-card">
-        <div className="text-xs text-muted-foreground font-medium mb-2">Daily Streak</div>
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-primary">3</span>
-          <span className="text-sm font-medium">Days</span>
+      <div className="p-4 m-4 glass-card space-y-4 mt-auto mb-4">
+        <div>
+          <div className="text-xs text-muted-foreground font-medium mb-1">Tài khoản</div>
+          <div className="text-sm font-bold truncate" title={session?.user?.email}>{session?.user?.email}</div>
         </div>
+        <button 
+          onClick={() => supabase.auth.signOut()} 
+          className="w-full py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg flex items-center justify-center gap-2 transition-colors"
+        >
+          <LogOut size={16} /> Đăng xuất
+        </button>
       </div>
     </div>
   );
@@ -63,6 +71,19 @@ function Sidebar() {
 
 function App() {
   const { settings } = useStore();
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -76,6 +97,14 @@ function App() {
     }
   }, [settings.theme]);
 
+  if (authLoading) {
+    return <div className="h-screen flex items-center justify-center bg-background"><div className="animate-spin"><Brain size={48} className="text-primary opacity-50" /></div></div>;
+  }
+
+  if (!session) {
+    return <AuthPage />;
+  }
+
   return (
     <BrowserRouter>
       <div className="flex h-screen overflow-hidden bg-background">
@@ -83,7 +112,7 @@ function App() {
         <div className="fixed top-[-50%] left-[-10%] w-[70%] h-[70%] rounded-full bg-primary/20 blur-[120px] -z-10 pointer-events-none" />
         <div className="fixed bottom-[-50%] right-[-10%] w-[60%] h-[60%] rounded-full bg-accent/20 blur-[100px] -z-10 pointer-events-none" />
 
-        <Sidebar />
+        <Sidebar session={session} />
         
         <main className="flex-1 overflow-y-auto relative">
           <AnimatePresence mode="wait">
