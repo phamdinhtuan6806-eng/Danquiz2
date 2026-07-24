@@ -117,7 +117,7 @@ export function ImportQuestions() {
       }
       
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
       
       const prompt = `
 Bạn là một chuyên gia trích xuất dữ liệu. Hãy đọc văn bản sau và TRÍCH XUẤT TẤT CẢ CÁC CÂU HỎI TRẮC NGHIỆM có trong đó.
