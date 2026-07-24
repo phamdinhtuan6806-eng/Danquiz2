@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Trophy } from 'lucide-react';
+import { BookOpen, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Trophy, Clock } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function MockExam() {
@@ -15,10 +15,29 @@ export function MockExam() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [questionCount, setQuestionCount] = useState<number>(20);
+  const [timeLimit, setTimeLimit] = useState<number>(0);
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
 
   useEffect(() => {
     fetchSubjects();
   }, []);
+
+  useEffect(() => {
+    if (step === 'exam' && timeLimit > 0 && timeRemaining > 0) {
+      const timerId = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            clearInterval(timerId);
+            submitExam(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timerId);
+    }
+  }, [step, timeLimit, timeRemaining]);
 
   const fetchSubjects = async () => {
     setLoading(true);
@@ -52,11 +71,13 @@ export function MockExam() {
         updatedAt: new Date(q.updated_at).getTime(),
       }));
       
-      // Shuffle and pick up to 20 questions
+      // Shuffle and pick up to questionCount questions
       formattedQs.sort(() => Math.random() - 0.5);
-      setQuestions(formattedQs.slice(0, 20));
+      const finalQs = questionCount === 0 ? formattedQs : formattedQs.slice(0, questionCount);
+      setQuestions(finalQs);
       setAnswers({});
       setCurrentIndex(0);
+      setTimeRemaining(timeLimit * 60);
       setStep('exam');
     } else {
       alert('Không tìm thấy câu hỏi nào cho môn học này!');
@@ -64,8 +85,8 @@ export function MockExam() {
     setLoading(false);
   };
 
-  const submitExam = () => {
-    if (window.confirm('Bạn có chắc chắn muốn nộp bài?')) {
+  const submitExam = (isAuto = false) => {
+    if (isAuto === true || window.confirm('Bạn có chắc chắn muốn nộp bài?')) {
       setStep('result');
       confetti({
         particleCount: 150,
@@ -111,9 +132,35 @@ export function MockExam() {
                 </select>
               )}
             </div>
-            <div className="p-4 bg-secondary/50 rounded-xl space-y-2 text-sm text-muted-foreground">
-              <div className="flex justify-between"><span>Số câu hỏi:</span> <span className="font-medium text-foreground">Tối đa 20 câu</span></div>
-              <div className="flex justify-between"><span>Thời gian:</span> <span className="font-medium text-foreground">Không giới hạn</span></div>
+            <div className="p-4 bg-secondary/50 rounded-xl space-y-4 text-sm text-muted-foreground">
+              <div className="flex justify-between items-center">
+                <span>Số câu hỏi:</span> 
+                <select 
+                  className="p-2 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary outline-none"
+                  value={questionCount}
+                  onChange={(e) => setQuestionCount(Number(e.target.value))}
+                >
+                  <option value={10}>10 câu</option>
+                  <option value={20}>20 câu</option>
+                  <option value={30}>30 câu</option>
+                  <option value={50}>50 câu</option>
+                  <option value={0}>Tất cả</option>
+                </select>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Thời gian:</span> 
+                <select 
+                  className="p-2 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary outline-none"
+                  value={timeLimit}
+                  onChange={(e) => setTimeLimit(Number(e.target.value))}
+                >
+                  <option value={0}>Không giới hạn</option>
+                  <option value={10}>10 phút</option>
+                  <option value={15}>15 phút</option>
+                  <option value={30}>30 phút</option>
+                  <option value={60}>60 phút</option>
+                </select>
+              </div>
             </div>
             <Button className="w-full" size="lg" disabled={subjects.length === 0} onClick={startExam}>
               Bắt đầu thi ngay
@@ -132,7 +179,13 @@ export function MockExam() {
           <div className="bg-primary/20 px-4 py-2 rounded-full text-primary font-bold">
             Câu {currentIndex + 1} / {questions.length}
           </div>
-          <Button variant="secondary" onClick={submitExam} className="font-medium text-destructive hover:bg-destructive/10 hover:text-destructive">
+          {timeLimit > 0 && (
+            <div className="flex items-center gap-2 font-mono text-xl font-bold text-orange-500">
+              <Clock size={24} />
+              {Math.floor(timeRemaining / 60).toString().padStart(2, '0')}:{(timeRemaining % 60).toString().padStart(2, '0')}
+            </div>
+          )}
+          <Button variant="secondary" onClick={() => submitExam(false)} className="font-medium text-destructive hover:bg-destructive/10 hover:text-destructive">
             Nộp bài sớm
           </Button>
         </div>
@@ -177,7 +230,7 @@ export function MockExam() {
             </Button>
 
             {currentIndex === questions.length - 1 ? (
-              <Button size="lg" onClick={submitExam} className="px-12 bg-green-600 hover:bg-green-700 text-white">
+              <Button size="lg" onClick={() => submitExam(false)} className="px-12 bg-green-600 hover:bg-green-700 text-white">
                 Nộp bài <CheckCircle2 className="ml-2" />
               </Button>
             ) : (
