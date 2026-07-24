@@ -117,7 +117,6 @@ export function ImportQuestions() {
       }
       
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
       
       const prompt = `
 Bạn là một chuyên gia trích xuất dữ liệu. Hãy đọc văn bản sau và TRÍCH XUẤT TẤT CẢ CÁC CÂU HỎI TRẮC NGHIỆM có trong đó.
@@ -135,9 +134,27 @@ Giải thích: [Giải thích nếu có, nếu không thì bỏ qua dòng này]
 Văn bản gốc:
 ${fullText}
 `;
-      
-      const result = await model.generateContent(prompt);
-      const aiResponse = result.response.text();
+
+      const modelsToTry = ["gemini-1.5-flash-8b", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"];
+      let aiResponse = "";
+      let lastError: any = null;
+
+      for (const modelName of modelsToTry) {
+        try {
+          console.log("Đang thử model: " + modelName);
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(prompt);
+          aiResponse = result.response.text();
+          break; // Thành công thì thoát vòng lặp
+        } catch (err: any) {
+          console.warn(`Lỗi khi dùng ${modelName}:`, err.message);
+          lastError = err;
+        }
+      }
+
+      if (!aiResponse) {
+        throw new Error("Tài khoản của bạn đã bị khóa tính năng miễn phí trên mọi phiên bản AI. Chi tiết lỗi: " + (lastError?.message || 'Không xác định'));
+      }
       
       setRawText(aiResponse);
       parseText(aiResponse);
