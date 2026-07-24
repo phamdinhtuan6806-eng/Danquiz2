@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import { useStore } from './store/useStore';
 import { Brain, LayoutDashboard, Settings, FileDown, BookOpen, Trophy, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 
 import { ImportQuestions } from './pages/ImportQuestions';
