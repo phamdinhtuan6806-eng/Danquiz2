@@ -5,7 +5,7 @@ import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, XCircle, ArrowRight, Brain, Trash2 } from 'lucide-react';
+import { CheckCircle, XCircle, ArrowRight, Brain, Trash2, BookOpen } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function QuizEngine() {
@@ -17,38 +17,68 @@ export function QuizEngine() {
   const [loading, setLoading] = useState(true);
   const [sessionScore, setSessionScore] = useState(0);
 
+  const [step, setStep] = useState<'select_subject' | 'study'>('select_subject');
+  const [subjects, setSubjects] = useState<{name: string, count: number}[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+
   useEffect(() => {
-    loadQuestions();
+    fetchSubjects();
   }, []);
 
-  const loadQuestions = async () => {
+  const fetchSubjects = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('questions').select('category');
+    if (data) {
+      const counts: Record<string, number> = {};
+      data.forEach(d => {
+        if (d.category) {
+          counts[d.category] = (counts[d.category] || 0) + 1;
+        }
+      });
+      const unique = Object.keys(counts).map(name => ({ name, count: counts[name] }));
+      setSubjects(unique);
+    }
+    setLoading(false);
+  };
+
+  const startStudy = async (subject: string) => {
+    setSelectedSubject(subject);
+    setStep('study');
+    setCurrentIndex(0);
+    setSessionScore(0);
+    await loadQuestions(subject);
+  };
+
+  const loadQuestions = async (subject: string) => {
     setLoading(true);
     const now = Date.now();
     
-    let { data: stats } = await supabase
-      .from('question_stats')
+    const { data: qData } = await supabase
+      .from('questions')
       .select('*')
-      .lte('next_review_date', now)
-      .limit(20);
+      .eq('category', subject);
       
-    if (!stats || stats.length === 0) {
-      const res = await supabase.from('question_stats').select('*').limit(20);
-      stats = res.data || [];
-    }
-
-    if (stats.length === 0) {
+    if (!qData || qData.length === 0) {
       setQuestions([]);
       setLoading(false);
       return;
     }
+
+    const questionIds = qData.map(q => q.id);
     
-    const questionIds = stats.map(s => s.question_id);
-    const { data: qData } = await supabase
-      .from('questions')
+    let { data: stats } = await supabase
+      .from('question_stats')
       .select('*')
-      .in('id', questionIds);
+      .in('question_id', questionIds)
+      .lte('next_review_date', now)
+      .limit(20);
       
-    if (!qData) {
+    if (!stats || stats.length === 0) {
+      const res = await supabase.from('question_stats').select('*').in('question_id', questionIds).limit(20);
+      stats = res.data || [];
+    }
+
+    if (stats.length === 0) {
       setQuestions([]);
       setLoading(false);
       return;
@@ -160,7 +190,7 @@ export function QuizEngine() {
       if (newQuestions.length === 0) {
          setSessionScore(0);
          setCurrentIndex(0);
-         loadQuestions();
+         loadQuestions(selectedSubject!);
       } else {
          if (currentIndex >= newQuestions.length) {
             setCurrentIndex(0);
@@ -178,13 +208,54 @@ export function QuizEngine() {
       setCurrentIndex(c => c + 1);
     } else {
       // End of session
-      loadQuestions();
+      loadQuestions(selectedSubject!);
       setCurrentIndex(0);
       setSelectedAnswer(null);
       setIsRevealed(false);
       setSessionScore(0);
     }
   };
+
+  if (step === 'select_subject') {
+    return (
+      <div className="p-4 md:p-8 max-w-4xl mx-auto h-full flex flex-col">
+        <div className="mb-8 space-y-2">
+          <h1 className="text-3xl font-bold">Chọn môn học</h1>
+          <p className="text-muted-foreground">Bạn muốn ôn tập môn nào hôm nay?</p>
+        </div>
+        
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center"><div className="animate-spin text-primary"><Brain size={48} /></div></div>
+        ) : subjects.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center space-y-4">
+            <BookOpen size={64} className="text-muted-foreground opacity-20" />
+            <h2 className="text-xl font-bold">Chưa có môn học nào</h2>
+            <p className="text-muted-foreground">Hãy vào phần Import để tạo câu hỏi và môn học mới.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {subjects.map((sub) => (
+              <Card 
+                key={sub.name} 
+                glass 
+                className="p-6 cursor-pointer hover:border-primary/50 transition-all hover:-translate-y-1 group relative overflow-hidden"
+                onClick={() => startStudy(sub.name)}
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-bl-full -z-10 group-hover:scale-110 transition-transform"></div>
+                <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">{sub.name}</h3>
+                <p className="text-sm text-muted-foreground font-medium">{sub.count} câu hỏi</p>
+                <div className="mt-4 flex justify-end">
+                  <div className="bg-primary/10 text-primary p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                    <ArrowRight size={16} />
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (loading) {
     return <div className="flex h-full items-center justify-center"><div className="animate-spin text-primary"><Brain size={48} /></div></div>;
@@ -194,8 +265,9 @@ export function QuizEngine() {
     return (
       <div className="flex h-full flex-col items-center justify-center space-y-4">
         <Brain size={64} className="text-muted-foreground opacity-20" />
-        <h2 className="text-2xl font-bold">No questions available!</h2>
-        <p className="text-muted-foreground">Import some questions to start studying.</p>
+        <h2 className="text-2xl font-bold">Chưa có câu hỏi nào!</h2>
+        <p className="text-muted-foreground">Môn này hiện tại chưa có câu hỏi nào để ôn tập.</p>
+        <Button onClick={() => setStep('select_subject')}>Quay lại chọn môn</Button>
       </div>
     );
   }
@@ -204,15 +276,26 @@ export function QuizEngine() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto h-full flex flex-col">
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex items-center gap-4">
-          <div className="bg-primary/20 p-2 rounded-xl text-primary font-bold">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <select 
+            className="p-2 rounded-xl border border-input bg-background focus:ring-2 focus:ring-primary outline-none font-medium max-w-[200px] truncate"
+            value={selectedSubject || ''}
+            onChange={(e) => startStudy(e.target.value)}
+          >
+            {subjects.map(sub => (
+              <option key={sub.name} value={sub.name}>{sub.name}</option>
+            ))}
+          </select>
+          <div className="bg-primary/20 p-2 rounded-xl text-primary font-bold shrink-0">
             {currentIndex + 1} / {questions.length}
           </div>
-          <div className="text-sm text-muted-foreground font-medium">Session Score: {sessionScore}</div>
+          <div className="text-sm text-muted-foreground font-medium">
+            <span>Score: {sessionScore}</span>
+          </div>
         </div>
         
-        <div className="h-2 flex-1 mx-8 bg-secondary rounded-full overflow-hidden">
+        <div className="h-2 w-full md:w-64 bg-secondary rounded-full overflow-hidden shrink-0">
           <motion.div 
             className="h-full bg-primary" 
             initial={{ width: 0 }}
