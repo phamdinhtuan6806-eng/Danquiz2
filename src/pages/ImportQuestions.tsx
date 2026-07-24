@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { type Question } from '../db/db';
 import { supabase } from '../lib/supabase';
-import { Upload, Copy, CheckCircle2, AlertCircle, Trash2, Edit2, Save, X, Database } from 'lucide-react';
+import { Upload, Copy, CheckCircle2, AlertCircle, Trash2, Edit2, Save, X, Database, FileText, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import * as pdfjsLib from 'pdfjs-dist';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// Set up PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 export function ImportQuestions() {
   const [rawText, setRawText] = useState('');
@@ -18,6 +23,10 @@ export function ImportQuestions() {
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Question>>({});
+  
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!subject.trim()) {
@@ -71,6 +80,74 @@ export function ImportQuestions() {
       setEditingId(null);
     } else {
       alert('Lỗi cập nhật: ' + error.message);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingFile(true);
+    setProcessingStatus('Đang đọc PDF...');
+    
+    try {
+      // 1. Extract Text from PDF
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+        fullText += pageText + '\n';
+        setProcessingStatus(`Đang đọc PDF... (${i}/${pdf.numPages} trang)`);
+      }
+
+      if (!fullText.trim()) {
+        throw new Error("Không tìm thấy chữ trong file PDF này (có thể là file ảnh chụp không chứa text).");
+      }
+
+      setProcessingStatus('Đang gửi cho AI phân tích (chờ 5-20s)...');
+      
+      // 2. Send to Gemini AI
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("Chưa cấu hình API Key của Gemini. Vui lòng thêm VITE_GEMINI_API_KEY vào biến môi trường.");
+      }
+      
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      const prompt = `
+Bạn là một chuyên gia trích xuất dữ liệu. Hãy đọc văn bản sau và TRÍCH XUẤT TẤT CẢ CÁC CÂU HỎI TRẮC NGHIỆM có trong đó.
+BỎ QUA TẤT CẢ phần lý thuyết, tiêu đề, hoặc văn bản không liên quan.
+CHỈ TRẢ VỀ ĐÚNG ĐỊNH DẠNG SAU (Không dùng thẻ markdown như \`\`\`):
+
+Câu 1: [Nội dung câu hỏi]
+A. [Lựa chọn 1]
+B. [Lựa chọn 2]
+C. [Lựa chọn 3]
+D. [Lựa chọn 4]
+Đáp án: A
+Giải thích: [Giải thích nếu có, nếu không thì bỏ qua dòng này]
+
+Văn bản gốc:
+${fullText}
+`;
+      
+      const result = await model.generateContent(prompt);
+      const aiResponse = result.response.text();
+      
+      setRawText(aiResponse);
+      parseText(aiResponse);
+
+    } catch (e: any) {
+      alert("Lỗi xử lý file: " + e.message);
+    } finally {
+      setIsProcessingFile(false);
+      setProcessingStatus('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -134,7 +211,7 @@ export function ImportQuestions() {
           currentQ = isQ ? isQ[2] : (isNumQ ? isNumQ[2] : line);
           state = 'question';
         } else if (isAns) {
-          currentAnswer = isAns[2].replace(/[\*\#]/g, '').trim(); // Remove any trailing markdown like **A** -> A
+          currentAnswer = isAns[2].replace(/[\*\#]/g, '').trim(); 
           state = 'answer';
         } else if (isExp) {
           currentExp = isExp[2];
@@ -240,16 +317,37 @@ export function ImportQuestions() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Thêm / Quản lý câu hỏi</h1>
-          <p className="text-muted-foreground mt-2">Dán văn bản để thêm câu hỏi mới, và quản lý các câu hỏi đã có.</p>
+          <p className="text-muted-foreground mt-2">Dán văn bản hoặc tải lên file PDF để AI tự động bóc tách câu hỏi.</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
-        <Card glass className="flex flex-col h-full">
+        <Card glass className="flex flex-col h-full relative overflow-hidden">
+          {isProcessingFile && (
+            <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4">
+              <Loader2 className="w-10 h-10 animate-spin text-primary" />
+              <div className="font-semibold text-lg">{processingStatus}</div>
+              <p className="text-sm text-muted-foreground max-w-xs text-center">Vui lòng không đóng trang. File PDF lớn có thể mất thời gian để xử lý.</p>
+            </div>
+          )}
+          
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Copy size={20} className="text-primary" />
-              Nội dung thêm mới
+            <CardTitle className="flex items-center gap-2 justify-between">
+              <div className="flex items-center gap-2">
+                <Copy size={20} className="text-primary" />
+                Nội dung thêm mới
+              </div>
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <FileText size={16} className="mr-2" />
+                Tải lên PDF (AI)
+              </Button>
+              <input 
+                type="file" 
+                accept=".pdf" 
+                className="hidden" 
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+              />
             </CardTitle>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col gap-4">
@@ -265,12 +363,12 @@ export function ImportQuestions() {
             </div>
             <textarea
               className="flex-1 w-full p-4 rounded-xl border border-input bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary resize-none font-mono text-sm"
-              placeholder="Question: What is React?\nA. A library\nB. A framework\nC. A language\nD. A database\nAnswer: A\nExplanation: React is a UI library."
+              placeholder="Dán văn bản vào đây hoặc tải lên file PDF để AI tự phân tích..."
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
             />
             <Button onClick={() => parseText(rawText)} className="w-full">
-              Phân tích (Parse)
+              Phân tích thủ công (Parse Text)
             </Button>
           </CardContent>
         </Card>
