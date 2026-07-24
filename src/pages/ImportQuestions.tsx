@@ -123,18 +123,18 @@ export function ImportQuestions() {
         const line = lines[i];
         if (!line) continue;
 
-        const isQ = line.match(/^(Question|Q|Câu|Câu hỏi)\s*\d*[:\.]?\s*(.*)/i);
-        const isOpt = line.match(/^([A-E])[\.\)]\s+(.*)/i);
-        const isAns = line.match(/^(Answer|Correct Answer|Đáp án|Trả lời)[:\.]?\s*(.*)/i);
-        const isExp = line.match(/^(Explanation|Exp|Giải thích)[:\.]?\s*(.*)/i);
-        const isNumQ = line.match(/^(\d+)[\.\)]\s+(.*)/); 
+        const isQ = line.match(/^[\*\#]*\s*(Question|Q|Câu|Câu hỏi)\s*\d*[\*\#]*[:\.]?\s*(.*)/i);
+        const isOpt = line.match(/^[\*\#]*\s*([A-E])[\.\)][\*\#]*\s*(.*)/i);
+        const isAns = line.match(/^[\*\#]*\s*(Answer|Correct Answer|Đáp án|Trả lời)[\*\#]*[:\.]?\s*(.*)/i);
+        const isExp = line.match(/^[\*\#]*\s*(Explanation|Exp|Giải thích)[\*\#]*[:\.]?\s*(.*)/i);
+        const isNumQ = line.match(/^[\*\#]*\s*(\d+)[\.\)][\*\#]*\s+(.*)/); 
 
         if (isQ || isNumQ) {
           saveQuestion();
           currentQ = isQ ? isQ[2] : (isNumQ ? isNumQ[2] : line);
           state = 'question';
         } else if (isAns) {
-          currentAnswer = isAns[2];
+          currentAnswer = isAns[2].replace(/[\*\#]/g, '').trim(); // Remove any trailing markdown like **A** -> A
           state = 'answer';
         } else if (isExp) {
           currentExp = isExp[2];
@@ -151,13 +151,13 @@ export function ImportQuestions() {
                currentQ += (currentQ ? '\n' : '') + line;
              }
           } else if (state === 'options') {
-             if (currentOptions.length >= 2 && !line.match(/^[a-e][\.\)]/i)) {
+             if (currentOptions.length >= 2 && !line.match(/^[\*\#]*\s*[a-e][\.\)]/i)) {
                saveQuestion();
                currentQ = line;
                state = 'question';
              } else {
                if (currentOptions.length > 0) {
-                 currentOptions[currentOptions.length - 1] += ' ' + line;
+                 currentOptions[currentOptions.length - 1] += '\n' + line;
                }
              }
           } else if (state === 'explanation') {
