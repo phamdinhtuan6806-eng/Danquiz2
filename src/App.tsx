@@ -24,7 +24,7 @@ function Sidebar({ session }: { session: Session | null }) {
   ];
 
   return (
-    <div className="w-64 border-r border-border bg-card/50 backdrop-blur-xl h-screen flex flex-col hidden md:flex">
+    <div className="w-64 border-r border-border bg-card/50 backdrop-blur-xl h-screen flex flex-col">
       <div className="p-6 flex items-center gap-3">
         <div className="bg-primary/20 p-2 rounded-xl">
           <Brain className="text-primary" size={24} />
