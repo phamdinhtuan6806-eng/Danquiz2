@@ -43,18 +43,36 @@ export function ImportQuestions() {
     setLoadingExisting(true);
     const { data } = await supabase.from('questions').select('*').eq('category', cat).order('created_at', { ascending: false });
     if (data) {
-      setExistingQuestions(data.map(q => ({
-        id: q.id,
-        question: q.question,
-        options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
-        correctAnswer: q.correct_answer,
-        explanation: q.explanation,
-        category: q.category,
-        difficulty: q.difficulty,
-        tags: typeof q.tags === 'string' ? JSON.parse(q.tags) : q.tags,
-        createdAt: new Date(q.created_at).getTime(),
-        updatedAt: new Date(q.updated_at).getTime()
-      })));
+      setExistingQuestions(data.map(q => {
+        let type: QuestionType = 'single';
+        let parsedCorrectAnswer = q.correct_answer;
+        
+        if (typeof q.correct_answer === 'string') {
+          if (q.correct_answer.startsWith('MATCHING:')) {
+            type = 'matching';
+            parsedCorrectAnswer = q.correct_answer.substring(9);
+          } else if (q.correct_answer.startsWith('[')) {
+            try {
+              JSON.parse(q.correct_answer);
+              type = 'multiple';
+            } catch (e) {}
+          }
+        }
+
+        return {
+          id: q.id,
+          type,
+          question: q.question,
+          options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
+          correctAnswer: parsedCorrectAnswer,
+          explanation: q.explanation,
+          category: q.category,
+          difficulty: q.difficulty,
+          tags: typeof q.tags === 'string' ? JSON.parse(q.tags) : q.tags,
+          createdAt: new Date(q.created_at).getTime(),
+          updatedAt: new Date(q.updated_at).getTime()
+        };
+      }));
     }
     setLoadingExisting(false);
   };
@@ -67,10 +85,23 @@ export function ImportQuestions() {
 
   const handleSaveEdit = async () => {
     if (!editingId || !editForm.question || !editForm.options || editForm.options.length === 0) return;
+    let finalCorrectAnswer = editForm.correctAnswer;
+    if (editForm.type === 'matching') {
+      finalCorrectAnswer = `MATCHING:${editForm.correctAnswer}`;
+    } else if (editForm.type === 'multiple') {
+      // It's already stringified array if they edited it properly, or we ensure it's stringified.
+      // Wait, we'll handle multiple correctly in the UI. Assuming it's correctly formatted string array.
+      if (Array.isArray(editForm.correctAnswer)) {
+        finalCorrectAnswer = JSON.stringify(editForm.correctAnswer);
+      } else if (typeof editForm.correctAnswer === 'string' && !editForm.correctAnswer.startsWith('[')) {
+        finalCorrectAnswer = JSON.stringify([editForm.correctAnswer]);
+      }
+    }
+
     const { error } = await supabase.from('questions').update({
       question: editForm.question,
       options: editForm.options,
-      correct_answer: editForm.correctAnswer,
+      correct_answer: finalCorrectAnswer,
       explanation: editForm.explanation,
       updated_at: new Date().toISOString()
     }).eq('id', editingId);
@@ -119,17 +150,44 @@ export function ImportQuestions() {
       const genAI = new GoogleGenerativeAI(apiKey);
       
       const prompt = `
-Bạn là một chuyên gia trích xuất dữ liệu. Hãy đọc văn bản sau và TRÍCH XUẤT TẤT CẢ CÁC CÂU HỎI TRẮC NGHIỆM có trong đó.
+Bạn là một chuyên gia trích xuất dữ liệu. Hãy đọc văn bản sau và TRÍCH XUẤT TẤT CẢ CÁC CÂU HỎI có trong đó.
 BỎ QUA TẤT CẢ phần lý thuyết, tiêu đề, hoặc văn bản không liên quan.
+
+Hỗ trợ 3 loại câu hỏi:
+1. Câu hỏi 1 đáp án đúng (Single)
+2. Câu hỏi nhiều đáp án đúng (Multiple)
+3. Câu hỏi nối bảng (Matching)
+
 CHỈ TRẢ VỀ ĐÚNG ĐỊNH DẠNG SAU (Không dùng thẻ markdown như \`\`\`):
 
+=== SINGLE ===
 Câu 1: [Nội dung câu hỏi]
 A. [Lựa chọn 1]
 B. [Lựa chọn 2]
 C. [Lựa chọn 3]
 D. [Lựa chọn 4]
 Đáp án: A
-Giải thích: [Giải thích nếu có, nếu không thì bỏ qua dòng này]
+Giải thích: [Giải thích nếu có]
+
+=== MULTIPLE ===
+Câu 2: [Nội dung câu hỏi có nhiều đáp án đúng]
+A. [Lựa chọn 1]
+B. [Lựa chọn 2]
+C. [Lựa chọn 3]
+D. [Lựa chọn 4]
+Đáp án: A, C
+Giải thích: [Giải thích nếu có]
+
+=== MATCHING ===
+Câu 3: [Nội dung yêu cầu nối bảng]
+1. [Mục trái 1] -> a. [Mục phải 1]
+2. [Mục trái 2] -> b. [Mục phải 2]
+3. [Mục trái 3] -> c. [Mục phải 3]
+Giải thích: [Giải thích nếu có]
+
+Quy tắc:
+- Bắt buộc bắt đầu mỗi loại bằng chuỗi === SINGLE ===, === MULTIPLE ===, hoặc === MATCHING === tương ứng trước nhóm câu hỏi đó. Hoặc dùng chữ TYPE: SINGLE trước mỗi câu.
+- Dùng đúng format như trên. Đối với MATCHING, dùng dấu -> để nối giữa mục trái và phải.
 
 Văn bản gốc:
 ${fullText}
@@ -168,7 +226,7 @@ ${fullText}
     }
   };
 
-  const parseText = (text: string) => {
+    const parseText = (text: string) => {
     setStatus('parsing');
     try {
       const parsed: Question[] = [];
@@ -178,22 +236,48 @@ ${fullText}
       let currentOptions: string[] = [];
       let currentAnswer = '';
       let currentExp = '';
+      let currentType: 'single' | 'multiple' | 'matching' = 'single';
       
       const saveQuestion = () => {
-        if (currentQ && currentOptions.length > 0) {
-          // Find full text of correct answer
+        if (currentQ && (currentOptions.length > 0 || currentType === 'matching')) {
           let correctText = currentAnswer;
-          const indexMap: { [key: string]: number } = { A: 0, B: 1, C: 2, D: 3, E: 4 };
-          let ansUpper = currentAnswer.toUpperCase();
           
-          if (ansUpper.length === 1 && indexMap[ansUpper] !== undefined && currentOptions[indexMap[ansUpper]]) {
-             correctText = currentOptions[indexMap[ansUpper]];
-          } else if (!currentAnswer) {
-             correctText = currentOptions[0]; // Default to first option if no answer provided
+          if (currentType === 'single') {
+            const indexMap: { [key: string]: number } = { A: 0, B: 1, C: 2, D: 3, E: 4 };
+            let ansUpper = currentAnswer.toUpperCase();
+            if (ansUpper.length === 1 && indexMap[ansUpper] !== undefined && currentOptions[indexMap[ansUpper]]) {
+               correctText = currentOptions[indexMap[ansUpper]];
+            } else if (!currentAnswer) {
+               correctText = currentOptions[0]; // Default
+            }
+          } else if (currentType === 'multiple') {
+             // currentAnswer might be "A, C"
+             const parts = currentAnswer.split(/[,;&]/).map(p => p.trim().toUpperCase());
+             const indexMap: { [key: string]: number } = { A: 0, B: 1, C: 2, D: 3, E: 4 };
+             const selectedOptions = parts.map(p => {
+                if (p.length === 1 && indexMap[p] !== undefined && currentOptions[indexMap[p]]) {
+                   return currentOptions[indexMap[p]];
+                }
+                return p;
+             }).filter(p => currentOptions.includes(p) || p.length > 1);
+             
+             if (selectedOptions.length === 0 && currentAnswer) selectedOptions.push(currentAnswer);
+             correctText = JSON.stringify(selectedOptions);
+          } else if (currentType === 'matching') {
+             // options are used to store pairs temporarily during parsing
+             const pairs = currentOptions.map(opt => {
+                const parts = opt.split('->').map(p => p.trim());
+                if (parts.length >= 2) return { left: parts[0], right: parts.slice(1).join('->') };
+                return null;
+             }).filter(Boolean);
+             
+             currentOptions = []; // No options for matching, only pairs
+             correctText = JSON.stringify(pairs);
           }
 
           parsed.push({
             id: crypto.randomUUID(),
+            type: currentType,
             question: currentQ.trim(),
             options: [...currentOptions],
             correctAnswer: correctText,
@@ -217,11 +301,23 @@ ${fullText}
         const line = lines[i];
         if (!line) continue;
 
+        if (line.includes('=== SINGLE ===') || line.includes('TYPE: SINGLE')) {
+          currentType = 'single';
+          continue;
+        } else if (line.includes('=== MULTIPLE ===') || line.includes('TYPE: MULTIPLE')) {
+          currentType = 'multiple';
+          continue;
+        } else if (line.includes('=== MATCHING ===') || line.includes('TYPE: MATCHING')) {
+          currentType = 'matching';
+          continue;
+        }
+
         const isQ = line.match(/^[\*\#]*\s*(Question|Q|Câu|Câu hỏi)\s*\d*[\*\#]*[:\.]?\s*(.*)/i);
         const isOpt = line.match(/^[\*\#]*\s*([A-E])[\.\)][\*\#]*\s*(.*)/i);
         const isAns = line.match(/^[\*\#]*\s*(Answer|Correct Answer|Đáp án|Trả lời)[\*\#]*[:\.]?\s*(.*)/i);
         const isExp = line.match(/^[\*\#]*\s*(Explanation|Exp|Giải thích)[\*\#]*[:\.]?\s*(.*)/i);
         const isNumQ = line.match(/^[\*\#]*\s*(\d+)[\.\)][\*\#]*\s+(.*)/); 
+        const isMatchingPair = line.match(/^[\*\#]*\s*(.*?)[\s]*->[\s]*(.*)/);
 
         if (isQ || isNumQ) {
           saveQuestion();
@@ -233,6 +329,9 @@ ${fullText}
         } else if (isExp) {
           currentExp = isExp[2];
           state = 'explanation';
+        } else if (currentType === 'matching' && isMatchingPair) {
+          currentOptions.push(line.replace(/^[0-9\.\-\*]*\s*/, '')); // push raw pair to options
+          state = 'options';
         } else if (isOpt) {
           currentOptions.push(isOpt[2]);
           state = 'options';
@@ -245,13 +344,17 @@ ${fullText}
                currentQ += (currentQ ? '\n' : '') + line;
              }
           } else if (state === 'options') {
-             if (currentOptions.length >= 2 && !line.match(/^[\*\#]*\s*[a-e][\.\)]/i)) {
+             if (currentOptions.length >= 2 && !line.match(/^[\*\#]*\s*[a-e][\.\)]/i) && currentType !== 'matching') {
                saveQuestion();
                currentQ = line;
                state = 'question';
              } else {
                if (currentOptions.length > 0) {
-                 currentOptions[currentOptions.length - 1] += '\n' + line;
+                 if (currentType === 'matching') {
+                    currentOptions.push(line);
+                 } else {
+                    currentOptions[currentOptions.length - 1] += '\n' + line;
+                 }
                }
              }
           } else if (state === 'explanation') {
@@ -282,18 +385,25 @@ ${fullText}
   const handleImport = async () => {
     if (parsedQuestions.length === 0) return;
     try {
-      const supabaseQuestions = parsedQuestions.map(q => ({
-        id: q.id,
-        question: q.question,
-        options: q.options,
-        correct_answer: q.correctAnswer,
-        explanation: q.explanation,
-        category: q.category,
-        difficulty: q.difficulty,
-        tags: q.tags,
-        created_at: new Date(q.createdAt).toISOString(),
-        updated_at: new Date(q.updatedAt).toISOString()
-      }));
+      const supabaseQuestions = parsedQuestions.map(q => {
+        let finalCorrectAnswer = q.correctAnswer;
+        if (q.type === 'matching') {
+          finalCorrectAnswer = `MATCHING:${q.correctAnswer}`;
+        }
+
+        return {
+          id: q.id,
+          question: q.question,
+          options: q.options,
+          correct_answer: finalCorrectAnswer,
+          explanation: q.explanation,
+          category: q.category,
+          difficulty: q.difficulty,
+          tags: q.tags,
+          created_at: new Date(q.createdAt).toISOString(),
+          updated_at: new Date(q.updatedAt).toISOString()
+        };
+      });
 
       const { error: qError } = await supabase.from('questions').insert(supabaseQuestions);
       if (qError) throw qError;

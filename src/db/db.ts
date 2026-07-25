@@ -1,10 +1,13 @@
 import Dexie, { type Table } from 'dexie';
 
+export type QuestionType = 'single' | 'multiple' | 'matching';
+
 export interface Question {
   id: string;
+  type?: QuestionType; // Defaults to 'single' if missing
   question: string;
   options: string[];
-  correctAnswer: string;
+  correctAnswer: string; // Used for all types, but stores stringified JSON for multiple/matching
   explanation: string;
   category: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
