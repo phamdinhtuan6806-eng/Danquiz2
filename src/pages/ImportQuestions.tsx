@@ -304,12 +304,17 @@ ${fullText}
         if (line.includes('=== SINGLE ===') || line.includes('TYPE: SINGLE')) {
           currentType = 'single';
           continue;
-        } else if (line.includes('=== MULTIPLE ===') || line.includes('TYPE: MULTIPLE')) {
+        } else if (line.includes('=== MULTIPLE ===') || line.includes('TYPE: MULTIPLE') || line.toLowerCase().includes('(choose')) {
           currentType = 'multiple';
           continue;
         } else if (line.includes('=== MATCHING ===') || line.includes('TYPE: MATCHING')) {
           currentType = 'matching';
           continue;
+        }
+        
+        // auto detect inline multiple choice prompt like "(Choose three)"
+        if (line.toLowerCase().includes('(choose ') || line.toLowerCase().includes('chọn nhiều')) {
+           currentType = 'multiple';
         }
 
         const isQ = line.match(/^[\*\#]*\s*(Question|Q|Câu|Câu hỏi)\s*\d*[\*\#]*[:\.]?\s*(.*)/i);
@@ -553,9 +558,31 @@ ${fullText}
                         
                         <div className="font-semibold text-sm pr-8">{q.question}</div>
                         
-                        <div className="text-[10px] font-bold text-primary uppercase bg-primary/10 inline-block px-2 py-1 rounded mb-2">
-                          {q.type === 'single' ? 'Single Choice' : q.type === 'multiple' ? 'Multiple Choice' : 'Matching'}
-                        </div>
+                        <select 
+                          className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-1 rounded mb-2 border-none outline-none cursor-pointer appearance-none text-center"
+                          value={q.type || 'single'}
+                          onChange={(e) => {
+                             const newQs = [...parsedQuestions];
+                             const newType = e.target.value as 'single' | 'multiple' | 'matching';
+                             newQs[i].type = newType;
+                             
+                             if (newType === 'matching') {
+                                newQs[i].options = [];
+                                newQs[i].correctAnswer = JSON.stringify([{left: 'Mục trái 1', right: 'Mục phải 1'}]);
+                             } else if (newType === 'multiple') {
+                                newQs[i].correctAnswer = '[]';
+                                if (newQs[i].options.length === 0) newQs[i].options = ['Option 1', 'Option 2'];
+                             } else {
+                                newQs[i].correctAnswer = newQs[i].options.length > 0 ? newQs[i].options[0] : '';
+                                if (newQs[i].options.length === 0) newQs[i].options = ['Option 1', 'Option 2'];
+                             }
+                             setParsedQuestions(newQs);
+                          }}
+                        >
+                          <option value="single">LOẠI: 1 ĐÁP ÁN ▾</option>
+                          <option value="multiple">LOẠI: NHIỀU ĐÁP ÁN ▾</option>
+                          <option value="matching">LOẠI: NỐI BẢNG ▾</option>
+                        </select>
                         {q.type === 'matching' ? (() => {
                            let pairs: any[] = [];
                            try { pairs = JSON.parse(q.correctAnswer); } catch {}
