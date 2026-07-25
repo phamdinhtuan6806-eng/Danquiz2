@@ -318,7 +318,7 @@ ${fullText}
         }
 
         const isQ = line.match(/^[\*\#]*\s*(Question|Q|Câu|Câu hỏi)\s*\d*[\*\#]*[:\.]?\s*(.*)/i);
-        const isOpt = line.match(/^[\*\#]*\s*([A-E])[\.\)][\*\#]*\s*(.*)/i);
+        const isOpt = line.match(/^[\*\#]*\s*([A-Z])[\.\)][\*\#]*\s*(.*)/i);
         const isAns = line.match(/^[\*\#]*\s*(Answer|Correct Answer|Đáp án|Trả lời)[\*\#]*[:\.]?\s*(.*)/i);
         const isExp = line.match(/^[\*\#]*\s*(Explanation|Exp|Giải thích)[\*\#]*[:\.]?\s*(.*)/i);
         const isNumQ = line.match(/^[\*\#]*\s*(\d+)[\.\)][\*\#]*\s+(.*)/); 
@@ -349,7 +349,7 @@ ${fullText}
                currentQ += (currentQ ? '\n' : '') + line;
              }
           } else if (state === 'options') {
-             if (currentOptions.length >= 2 && !line.match(/^[\*\#]*\s*[a-e][\.\)]/i) && currentType !== 'matching') {
+             if (currentOptions.length >= 2 && !line.match(/^[\*\#]*\s*[a-z][\.\)]/i) && currentType !== 'matching') {
                saveQuestion();
                currentQ = line;
                state = 'question';
