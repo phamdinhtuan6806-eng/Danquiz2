@@ -648,18 +648,71 @@ ${fullText}
                         
                         {editingId === q.id ? (
                           <div className="space-y-3">
+                            <select 
+                              className="w-full p-2 text-sm bg-background border border-input rounded-lg"
+                              value={editForm.type || 'single'}
+                              onChange={e => {
+                                 const newType = e.target.value as 'single' | 'multiple' | 'matching';
+                                 let newCorrectAnswer = '';
+                                 let newOptions = editForm.options || [];
+                                 if (newType === 'matching') {
+                                    newOptions = [];
+                                    newCorrectAnswer = JSON.stringify([{left: 'Cột trái 1', right: 'Cột phải 1'}]);
+                                 } else if (newType === 'multiple') {
+                                    newCorrectAnswer = '[]';
+                                    if (newOptions.length === 0) newOptions = ['Option 1', 'Option 2'];
+                                 } else {
+                                    newCorrectAnswer = newOptions.length > 0 ? newOptions[0] : '';
+                                    if (newOptions.length === 0) newOptions = ['Option 1', 'Option 2'];
+                                 }
+                                 setEditForm({...editForm, type: newType, correctAnswer: newCorrectAnswer, options: newOptions});
+                              }}
+                            >
+                              <option value="single">Loại: 1 Đáp án (Single Choice)</option>
+                              <option value="multiple">Loại: Nhiều đáp án (Multiple Choice)</option>
+                              <option value="matching">Loại: Nối bảng (Matching)</option>
+                            </select>
                             <textarea 
                               className="w-full p-2 text-sm bg-background border border-input rounded-lg"
                               value={editForm.question}
                               onChange={e => setEditForm({...editForm, question: e.target.value})}
                               rows={2}
+                              placeholder="Nội dung câu hỏi"
                             />
                             <div className="space-y-2">
-                              {editForm.type === 'matching' ? (
-                                <div className="text-xs text-muted-foreground p-2 border rounded-lg bg-secondary/50">
-                                   * Cập nhật câu hỏi Matching hiện chưa hỗ trợ trên giao diện này, vui lòng xóa và Import lại bằng văn bản.
-                                </div>
-                              ) : (
+                              {editForm.type === 'matching' ? (() => {
+                                 let pairs: any[] = [];
+                                 try { pairs = JSON.parse(editForm.correctAnswer || '[]'); } catch {}
+                                 return (
+                                   <div className="space-y-2">
+                                     {pairs.map((p: any, pIdx: number) => (
+                                       <div key={pIdx} className="flex gap-2 items-center">
+                                         <input className="flex-1 p-2 text-xs bg-background border border-input rounded-lg" value={p.left} onChange={e => {
+                                            const newPairs = [...pairs];
+                                            newPairs[pIdx].left = e.target.value;
+                                            setEditForm({...editForm, correctAnswer: JSON.stringify(newPairs)});
+                                         }} placeholder="Cột trái" />
+                                         <LinkIcon size={14} className="text-muted-foreground shrink-0" />
+                                         <input className="flex-1 p-2 text-xs bg-background border border-input rounded-lg" value={p.right} onChange={e => {
+                                            const newPairs = [...pairs];
+                                            newPairs[pIdx].right = e.target.value;
+                                            setEditForm({...editForm, correctAnswer: JSON.stringify(newPairs)});
+                                         }} placeholder="Cột phải" />
+                                         <button onClick={() => {
+                                            const newPairs = pairs.filter((_, idx) => idx !== pIdx);
+                                            setEditForm({...editForm, correctAnswer: JSON.stringify(newPairs)});
+                                         }} className="p-1 text-destructive hover:bg-destructive/10 rounded"><Trash2 size={14}/></button>
+                                       </div>
+                                     ))}
+                                     <Button variant="secondary" size="sm" className="text-xs" onClick={() => {
+                                        const newPairs = [...pairs, {left: `Trái ${pairs.length + 1}`, right: `Phải ${pairs.length + 1}`}];
+                                        setEditForm({...editForm, correctAnswer: JSON.stringify(newPairs)});
+                                     }}>
+                                       + Thêm cặp nối
+                                     </Button>
+                                   </div>
+                                 );
+                              })() : (
                                 <>
                                   {editForm.options?.map((opt, oIdx) => {
                                      let isChecked = false;
