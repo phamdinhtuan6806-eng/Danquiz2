@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Button } from '../components/ui/Button';
 import { type Question } from '../db/db';
 import { supabase } from '../lib/supabase';
-import { Upload, Copy, CheckCircle2, AlertCircle, Trash2, Edit2, Save, X, Database, FileText, Loader2 } from 'lucide-react';
+import { Upload, Copy, CheckCircle2, AlertCircle, Trash2, Edit2, Save, X, Database, FileText, Loader2, Link as LinkIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import * as pdfjsLib from 'pdfjs-dist';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -553,26 +553,60 @@ ${fullText}
                         
                         <div className="font-semibold text-sm pr-8">{q.question}</div>
                         
-                        <div className="grid grid-cols-1 gap-2 text-xs">
-                          {q.options.map((opt, j) => (
-                            <button 
-                              key={j} 
-                              onClick={() => {
-                                const newQs = [...parsedQuestions];
-                                newQs[i].correctAnswer = opt;
-                                setParsedQuestions(newQs);
-                              }}
-                              className={`p-2.5 rounded-lg border text-left transition-colors flex items-center justify-between ${
-                                opt === q.correctAnswer 
-                                  ? 'border-primary bg-primary/10 text-primary font-medium' 
-                                  : 'border-border hover:border-primary/50'
-                              }`}
-                            >
-                              <span>{opt}</span>
-                              {opt === q.correctAnswer && <CheckCircle2 size={14} />}
-                            </button>
-                          ))}
+                        <div className="text-[10px] font-bold text-primary uppercase bg-primary/10 inline-block px-2 py-1 rounded mb-2">
+                          {q.type === 'single' ? 'Single Choice' : q.type === 'multiple' ? 'Multiple Choice' : 'Matching'}
                         </div>
+                        {q.type === 'matching' ? (() => {
+                           let pairs: any[] = [];
+                           try { pairs = JSON.parse(q.correctAnswer); } catch {}
+                           return (
+                             <div className="space-y-1">
+                                {pairs.map((p: any, j: number) => (
+                                   <div key={j} className="text-xs p-2 rounded-lg border border-primary/50 bg-primary/5 text-primary flex items-center justify-between">
+                                      <span>{p.left}</span> <span className="text-muted-foreground">-&gt;</span> <span>{p.right}</span>
+                                   </div>
+                                ))}
+                             </div>
+                           );
+                        })() : (
+                          <div className="grid grid-cols-1 gap-2 text-xs">
+                            {q.options.map((opt, j) => {
+                               let isSelected = false;
+                               if (q.type === 'multiple') {
+                                  try { isSelected = JSON.parse(q.correctAnswer).includes(opt); } catch {}
+                               } else {
+                                  isSelected = opt === q.correctAnswer;
+                               }
+                               
+                               return (
+                                 <button 
+                                   key={j} 
+                                   onClick={() => {
+                                     const newQs = [...parsedQuestions];
+                                     if (q.type === 'multiple') {
+                                        let arr: string[] = [];
+                                        try { arr = JSON.parse(q.correctAnswer); } catch {}
+                                        if (arr.includes(opt)) arr = arr.filter(x => x !== opt);
+                                        else arr.push(opt);
+                                        newQs[i].correctAnswer = JSON.stringify(arr);
+                                     } else {
+                                        newQs[i].correctAnswer = opt;
+                                     }
+                                     setParsedQuestions(newQs);
+                                   }}
+                                   className={`p-2.5 rounded-lg border text-left transition-colors flex items-center justify-between ${
+                                     isSelected 
+                                       ? 'border-primary bg-primary/10 text-primary font-medium' 
+                                       : 'border-border hover:border-primary/50'
+                                   }`}
+                                 >
+                                   <span>{opt}</span>
+                                   {isSelected && <CheckCircle2 size={14} />}
+                                 </button>
+                               );
+                            })}
+                          </div>
+                        )}
                       </div>
                     ))}
                     
@@ -621,43 +655,76 @@ ${fullText}
                               rows={2}
                             />
                             <div className="space-y-2">
-                              {editForm.options?.map((opt, oIdx) => (
-                                <div key={oIdx} className="flex gap-2 items-center">
-                                  <input 
-                                    type="radio" 
-                                    name={`correct-${q.id}`}
-                                    checked={editForm.correctAnswer === opt}
-                                    onChange={() => setEditForm({...editForm, correctAnswer: opt})}
-                                  />
-                                  <input 
-                                    className="flex-1 p-2 text-xs bg-background border border-input rounded-lg"
-                                    value={opt}
-                                    onChange={e => {
-                                      const newOpts = [...(editForm.options || [])];
-                                      const oldOpt = newOpts[oIdx];
-                                      newOpts[oIdx] = e.target.value;
-                                      
-                                      // If they edit the correct answer text, update it too
-                                      let newCorrect = editForm.correctAnswer;
-                                      if (newCorrect === oldOpt) newCorrect = e.target.value;
-                                      
-                                      setEditForm({...editForm, options: newOpts, correctAnswer: newCorrect});
-                                    }}
-                                  />
-                                  <button 
-                                    onClick={() => setEditForm({...editForm, options: editForm.options?.filter((_, idx) => idx !== oIdx)})}
-                                    className="p-1 text-destructive hover:bg-destructive/10 rounded"
-                                  ><Trash2 size={14}/></button>
+                              {editForm.type === 'matching' ? (
+                                <div className="text-xs text-muted-foreground p-2 border rounded-lg bg-secondary/50">
+                                   * Cập nhật câu hỏi Matching hiện chưa hỗ trợ trên giao diện này, vui lòng xóa và Import lại bằng văn bản.
                                 </div>
-                              ))}
-                              <Button 
-                                variant="secondary" 
-                                size="sm" 
-                                className="text-xs"
-                                onClick={() => setEditForm({...editForm, options: [...(editForm.options || []), `Option ${editForm.options!.length + 1}`]})}
-                              >
-                                + Thêm lựa chọn
-                              </Button>
+                              ) : (
+                                <>
+                                  {editForm.options?.map((opt, oIdx) => {
+                                     let isChecked = false;
+                                     if (editForm.type === 'multiple') {
+                                        try { isChecked = JSON.parse(editForm.correctAnswer || '[]').includes(opt); } catch {}
+                                     } else {
+                                        isChecked = editForm.correctAnswer === opt;
+                                     }
+                                     return (
+                                       <div key={oIdx} className="flex gap-2 items-center">
+                                         <input 
+                                           type={editForm.type === 'multiple' ? 'checkbox' : 'radio'} 
+                                           name={`correct-${q.id}`}
+                                           checked={isChecked}
+                                           onChange={() => {
+                                              if (editForm.type === 'multiple') {
+                                                 let arr: string[] = [];
+                                                 try { arr = JSON.parse(editForm.correctAnswer || '[]'); } catch {}
+                                                 if (arr.includes(opt)) arr = arr.filter(x => x !== opt);
+                                                 else arr.push(opt);
+                                                 setEditForm({...editForm, correctAnswer: JSON.stringify(arr)});
+                                              } else {
+                                                 setEditForm({...editForm, correctAnswer: opt});
+                                              }
+                                           }}
+                                         />
+                                         <input 
+                                           className="flex-1 p-2 text-xs bg-background border border-input rounded-lg"
+                                           value={opt}
+                                           onChange={e => {
+                                             const newOpts = [...(editForm.options || [])];
+                                             const oldOpt = newOpts[oIdx];
+                                             newOpts[oIdx] = e.target.value;
+                                             
+                                             let newCorrect = editForm.correctAnswer;
+                                             if (editForm.type === 'multiple') {
+                                                try {
+                                                   let arr = JSON.parse(newCorrect || '[]');
+                                                   arr = arr.map((x: string) => x === oldOpt ? e.target.value : x);
+                                                   newCorrect = JSON.stringify(arr);
+                                                } catch {}
+                                             } else {
+                                                if (newCorrect === oldOpt) newCorrect = e.target.value;
+                                             }
+                                             
+                                             setEditForm({...editForm, options: newOpts, correctAnswer: newCorrect});
+                                           }}
+                                         />
+                                         <button 
+                                           onClick={() => setEditForm({...editForm, options: editForm.options?.filter((_, idx) => idx !== oIdx)})}
+                                           className="p-1 text-destructive hover:bg-destructive/10 rounded"
+                                         ><Trash2 size={14}/></button>
+                                       </div>
+                                     );
+                                  })}
+                                  <Button 
+                                    variant="secondary" 
+                                    size="sm" 
+                                    className="text-xs"
+                                    onClick={() => setEditForm({...editForm, options: [...(editForm.options || []), `Option ${editForm.options!.length + 1}`]})}
+                                  >
+                                    + Thêm lựa chọn
+                                  </Button>
+                                </>
+                              )}
                             </div>
                             <div>
                               <input 
@@ -694,13 +761,38 @@ ${fullText}
                               </button>
                             </div>
                             <div className="font-semibold text-sm pr-16 mb-2">{q.question}</div>
-                            <div className="text-xs space-y-1">
-                              {q.options.map((opt, idx) => (
-                                <div key={idx} className={`px-2 py-1.5 rounded border ${opt === q.correctAnswer ? 'border-green-500/50 bg-green-500/10 text-green-700' : 'border-transparent text-muted-foreground'}`}>
-                                  {opt} {opt === q.correctAnswer && <CheckCircle2 size={12} className="inline ml-1" />}
-                                </div>
-                              ))}
+                            <div className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">
+                               {q.type === 'single' ? 'Single Choice' : q.type === 'multiple' ? 'Multiple Choice' : 'Matching'}
                             </div>
+                            {q.type === 'matching' ? (() => {
+                               let pairs: any[] = [];
+                               try { pairs = JSON.parse(q.correctAnswer); } catch {}
+                               return (
+                                 <div className="space-y-1">
+                                    {pairs.map((p: any, j: number) => (
+                                       <div key={j} className="text-xs p-2 rounded border border-green-500/30 bg-green-500/5 text-green-700 flex items-center justify-between">
+                                          <span>{p.left}</span> <span>-&gt;</span> <span>{p.right}</span>
+                                       </div>
+                                    ))}
+                                 </div>
+                               );
+                            })() : (
+                                <div className="text-xs space-y-1">
+                                  {q.options.map((opt, idx) => {
+                                     let isCorrect = false;
+                                     if (q.type === 'multiple') {
+                                        try { isCorrect = JSON.parse(q.correctAnswer).includes(opt); } catch {}
+                                     } else {
+                                        isCorrect = opt === q.correctAnswer;
+                                     }
+                                     return (
+                                       <div key={idx} className={`px-2 py-1.5 rounded border ${isCorrect ? 'border-green-500/50 bg-green-500/10 text-green-700' : 'border-transparent text-muted-foreground'}`}>
+                                         {opt} {isCorrect && <CheckCircle2 size={12} className="inline ml-1" />}
+                                       </div>
+                                     );
+                                  })}
+                                </div>
+                            )}
                             {q.explanation && (
                               <div className="mt-2 text-xs text-muted-foreground bg-secondary/50 p-2 rounded">
                                 <span className="font-bold">Giải thích:</span> {q.explanation}
