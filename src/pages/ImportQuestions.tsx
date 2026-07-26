@@ -304,7 +304,7 @@ ${fullText}
         if (line.includes('=== SINGLE ===') || line.includes('TYPE: SINGLE')) {
           currentType = 'single';
           continue;
-        } else if (line.includes('=== MULTIPLE ===') || line.includes('TYPE: MULTIPLE') || line.toLowerCase().includes('(choose')) {
+        } else if (line.includes('=== MULTIPLE ===') || line.includes('TYPE: MULTIPLE')) {
           currentType = 'multiple';
           continue;
         } else if (line.includes('=== MATCHING ===') || line.includes('TYPE: MATCHING')) {
